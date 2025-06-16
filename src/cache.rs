@@ -138,3 +138,84 @@ where
         cache.invalidate(&key_tuple).await;
     }
 }
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_skmv_creation() {
+        // test if you can create a new SkmvCache without a panic
+        SkmvCache::<String, String>::new(
+            SkmvConfig {
+                maximum_capacity: 100,
+                maximum_values_per_key: 10,
+                idle_timeout: Some(Duration::from_secs(60)),
+                time_to_live: Some(Duration::from_secs(60)),
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn test_skmv_insert_and_get() {
+        let cache = SkmvCache::<String, String>::new(
+            SkmvConfig {
+                maximum_capacity: 100,
+                maximum_values_per_key: 10,
+                idle_timeout: Some(Duration::from_secs(60)),
+                time_to_live: Some(Duration::from_secs(60)),
+            },
+        );
+
+        cache.insert("key1".to_string(), "value1".to_string(), 5).await;
+        let values = cache.get("key1".to_string()).await;
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0].as_str(), "value1");
+    }
+
+    #[tokio::test]
+    async fn test_skmv_insert_and_remove() {
+        let cache = SkmvCache::<String, String>::new(
+            SkmvConfig {
+                maximum_capacity: 100,
+                maximum_values_per_key: 10,
+                idle_timeout: Some(Duration::from_secs(60)),
+                time_to_live: Some(Duration::from_secs(60)),
+            },
+        );
+
+        cache.insert("key1".to_string(), "value1".to_string(), 5).await;
+        cache.remove("key1".to_string(), "value1".to_string()).await;
+        let values = cache.get("key1".to_string()).await;
+        assert!(values.is_empty());
+    }
+
+    // test muitple insertions, retievals and removals
+    #[tokio::test]
+    async fn test_skmv_multiple_operations() {
+        let cache = SkmvCache::<String, String>::new(
+            SkmvConfig {
+                maximum_capacity: 100,
+                maximum_values_per_key: 10,
+                idle_timeout: Some(Duration::from_secs(60)),
+                time_to_live: Some(Duration::from_secs(60)),
+            },
+        );
+
+        println!("Running multiple operations test...\n");
+
+        cache.insert("key1".to_string(), "value1".to_string(), 5).await;
+        cache.insert("key1".to_string(), "value2".to_string(), 5).await;
+        let values = cache.get("key1".to_string()).await;
+        assert_eq!(values.len(), 2);
+        assert!(values.contains(&Arc::new("value1".to_string())));
+        assert!(values.contains(&Arc::new("value2".to_string())));
+
+        cache.remove("key1".to_string(), "value1".to_string()).await;
+        let values = cache.get("key1".to_string()).await;
+        assert_eq!(values.len(), 1);
+        assert!(values.contains(&Arc::new("value2".to_string())));
+    }
+}
