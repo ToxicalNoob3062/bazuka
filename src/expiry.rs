@@ -8,13 +8,13 @@ use std::hash::Hash;
 
 pub struct DataExpiry;
 
-impl<K, V> Expiry<Arc<(K,V)>,u32> for DataExpiry where 
+impl<K, V> Expiry<Arc<(Arc<K>,Arc<V>)>,u32> for DataExpiry where 
     K: Hash + Eq + Send + Sync + 'static,
     V: Hash + Eq + Send + Sync + 'static,
   {
     fn expire_after_create(
         &self,
-        _key: &Arc<(K, V)>,
+        _key: &Arc<(Arc<K>, Arc<V>)>,
         value: &u32,
         _created_at: Instant,
     ) -> Option<Duration> {
@@ -24,7 +24,7 @@ impl<K, V> Expiry<Arc<(K,V)>,u32> for DataExpiry where
 
     fn expire_after_update(
         &self,
-        _key: &Arc<(K, V)>,
+        _key: &Arc<(Arc<K>, Arc<V>)>,
         value: &u32,
         _updated_at: Instant,
         _current_duration: Option<Duration>,

@@ -1,4 +1,5 @@
 mod expiry;
+mod cache;
 
 mod test {
     use super::expiry::DataExpiry;
@@ -69,10 +70,11 @@ mod test {
             })
             .build();
 
-        let k1 = Arc::new(("key1", "value1"));
+        type Key<K, V> = Arc<(Arc<K>, Arc<V>)>;
+        let k1 = Key::from((Arc::new("key1").to_owned(), Arc::new("value1").to_owned()));
         cache.insert(k1.clone(), 2).await;
-        cache.insert(Arc::new(("key2", "value2")), 2).await;
-        cache.insert(Arc::new(("key3", "value3")), 2).await;
+        cache.insert(Key::from((Arc::new("key2").to_owned(), Arc::new("value2").to_owned())), 2).await;
+        cache.insert(Key::from((Arc::new("key3").to_owned(), Arc::new("value3").to_owned())), 2).await;
         assert_eq!(cache.iter().count(), 3);
 
         // Update the expiry time for one item to be 5 seconds
