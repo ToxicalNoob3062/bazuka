@@ -7,6 +7,7 @@ description = "A high-performance, single key mutivalued async-capable cache lib
 exclude = [
     "src/bin",
 ]
+repository = "https://github.com/ToxicalNoob3062/bazuka"
 
 [dependencies]
 dashmap = "6.1.0"
