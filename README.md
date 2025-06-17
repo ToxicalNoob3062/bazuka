@@ -7,8 +7,7 @@ Bazuka is a high-performance, asynchronous, multi-value cache for Rust for tokio
 - **Multi-value per key:** Store multiple values for each key.
 - **Per-value TTL:** Each value can have its own time-to-live.
 - **Async and thread-safe:** Built for use with Tokio and safe for concurrent access.
-- **Customizable expiry:** Supports idle and absolute expiry for keys.
-- **Eviction listeners:** Custom logic on value/key eviction.
+- **Customizable expiry:** Supports idle and timeout expiry for keys.
 - **Efficient memory usage:** Backed by moka and dashmap for speed and safety.
 
 ## Usage
@@ -45,7 +44,7 @@ async fn main() {
 ## API Overview
 
 - `SkmvCache::new(config)`: Create a new cache with the given configuration.
-- `insert(key, value, ttl)`: Insert a value for a key with a specific TTL (seconds).
+- `insert(key, value, ttl)`: Insert a value for a key with a specific TTL (seconds) or update a previously inserted pair's ttl.
 - `get(&key) -> Vec<Arc<V>>`: Get all values for a key.
 - `remove(key, value)`: Remove a specific value for a key.
 
@@ -65,6 +64,9 @@ pub struct SkmvConfig {
 ```rust
 cache.insert("k1".to_string(), "v1".to_string(), 5).await; // expires in 5s
 cache.insert("k1".to_string(), "v2".to_string(), 10).await; // expires in 10s
+
+// update ttl
+cache.insert("k1".to_string(), "v1".to_string(), 8).await; // updated ttl of the specific value to 8 sec
 ```
 
 ## Testing
