@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::OnceCell;
 use tokio::time::Duration;
 
-type Tracker<K, V> = MokaCache<Arc<K>, DashSet<Arc<(Arc<K>, Arc<V>)>>>;
+type Tracker<K, V> = MokaCache<Arc<K>, Arc<DashSet<Arc<(Arc<K>, Arc<V>)>>>>;
 type Cache<K, V> = MokaCache<Arc<(Arc<K>, Arc<V>)>, u32>;
 type Vtable<K, V> = Arc<(OnceCell<Tracker<K, V>>, OnceCell<Cache<K, V>>)>;
 
@@ -18,6 +18,8 @@ pub struct SkmvConfig {
     pub time_to_live: Option<Duration>,
 }
 
+
+#[derive(Debug)]
 pub struct SkmvCache<K, V>
 where
     K: Hash + Eq + Send + Sync + 'static,
@@ -33,7 +35,7 @@ where
 {
     async fn tracker_eviction_listener(
         vtable: Vtable<K, V>,
-        evicted_data: DashSet<Arc<(Arc<K>, Arc<V>)>>,
+        evicted_data: Arc<DashSet<Arc<(Arc<K>, Arc<V>)>>>,
         cause: RemovalCause,
     ) {
         if RemovalCause::Explicit != cause {
@@ -111,7 +113,7 @@ where
                 let set = DashSet::new();
                 set.insert(key_tuple.clone());
                 cache.insert(key_tuple.clone(), ttl).await;
-                tracker.insert(key.clone(), set).await;
+                tracker.insert(key.clone(), Arc::new(set)).await;
             }
         }
     }

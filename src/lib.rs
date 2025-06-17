@@ -1,9 +1,14 @@
 mod expiry;
 mod cache;
 
+pub use cache::*;
+
 mod test {
+    #[allow(unused_imports)]
     use super::expiry::DataExpiry;
+    #[allow(unused_imports)]
     use std::sync::Arc;
+    #[allow(unused_imports)]
     use std::sync::atomic::{AtomicBool, Ordering};
 
     #[tokio::test]
