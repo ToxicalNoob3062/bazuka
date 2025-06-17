@@ -7,3 +7,6 @@ edition = "2024"
 dashmap = "6.1.0"
 moka = { version = "0.12.10", features = ["future"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+
+[dev-dependencies]
+rand = "0.9.1"

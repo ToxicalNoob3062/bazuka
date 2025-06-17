@@ -70,6 +70,3 @@ mod tests {
         println!("Current DashSet: {:?}", dset);
     }
 }
-
-//Current DashSet: {("key1", "value2"): (), ("key1", "value1"): ()}
-//                 {"key1": {("key1", "value1"): ()}}

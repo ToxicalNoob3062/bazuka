@@ -19,7 +19,7 @@ pub struct SkmvConfig {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct SkmvCache<K, V>
 where
     K: Hash + Eq + Send + Sync + 'static,
@@ -52,7 +52,7 @@ where
         evicted_data: &Arc<(Arc<K>, Arc<V>)>,
         cause: RemovalCause,
     ) {
-        if RemovalCause::Explicit != cause {
+        if RemovalCause::Explicit != cause && RemovalCause::Replaced != cause {
             if let Some(tracker) = vtable.0.get() {
                 if let Some(set) = tracker.get(&evicted_data.0).await {
                     set.remove(evicted_data);
@@ -115,7 +115,7 @@ where
                 cache.insert(key_tuple.clone(), ttl).await;
                 tracker.insert(key.clone(), Arc::new(set)).await;
             }
-        }
+        }      
     }
 
     /// Returns a vector of cloned values for the given key.
@@ -145,6 +145,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use rand::Rng;
+
     use super::*;
 
     #[test]
@@ -219,5 +221,84 @@ mod tests {
         let values = cache.get("key1".to_string()).await;
         assert_eq!(values.len(), 1);
         assert!(values.contains(&Arc::new("value2".to_string())));
+    }
+
+    #[tokio::test]
+    async fn test_skmv_concurrency() {
+        // launch 100 task that insert k_i for v_i for 10 sec;
+        // wait for 5 sec and then access a random key between 0 and 99
+        let cache = SkmvCache::<String, String>::new(
+            SkmvConfig {
+                maximum_capacity: 100,
+                maximum_values_per_key: 10,
+                idle_timeout: Some(Duration::from_secs(60)),
+                time_to_live: Some(Duration::from_secs(60)),
+            },
+        );
+        let mut handles = vec![];
+        for i in 0..100 {
+            let cache_clone = cache.clone();
+            let key = format!("key_{}", i);
+            let value = format!("value_{}", i);
+            handles.push(tokio::spawn(async move {
+                cache_clone.insert(key, value, 10).await;
+            }));
+        }
+        for handle in handles {
+            handle.await.unwrap();
+        }
+        // print insertion complete message
+        println!("Insertion complete, now accessing random keys...\n");
+        // assert the cache size is 100
+        assert_eq!(cache.vtable.1.get().unwrap().iter().count(), 100);
+        
+        // access random keys from different tasks
+        let mut handles = vec![];
+        let mut rng = rand::rng();
+        for _ in 0..100 {
+            let cache_clone = cache.clone();
+            let key_index = rng.random_range(0..100);
+            let key = format!("key_{}", key_index);
+            handles.push(tokio::spawn(async move {
+                let values = cache_clone.get(key).await;
+                // assert to get values of length 1 and value should be "value_{key_index}"
+                assert_eq!(values.len(), 1);
+                assert_eq!(values[0].as_str(), &format!("value_{}", key_index));
+            }));
+        }
+        for handle in handles {
+            handle.await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn test_skmv_rehydration() {
+        // test if you can rehydrate the cache with the same config
+        let cache = SkmvCache::<String, String>::new(
+            SkmvConfig {
+                maximum_capacity: 100,
+                maximum_values_per_key: 10,
+                idle_timeout: Some(Duration::from_secs(60)),
+                time_to_live: Some(Duration::from_secs(60)),
+            },
+        );
+
+        cache.insert("key1".to_string(), "value1".to_string(), 3).await;
+        let values = cache.get("key1".to_string()).await;
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0].as_str(), "value1");
+
+        // rehydrate the cache by passing a different ttl with same key and value
+        cache.insert("key1".to_string(), "value1".to_string(), 8).await;
+
+        // wait for 4 seconds to let the value expire
+        tokio::time::sleep(Duration::from_secs(4)).await;
+
+        // get the value again to check if it is still there as it has a new ttl for more 6 seconds if ttl was not updated it will be expiredd
+        let values = cache.get("key1".to_string()).await;
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0].as_str(), "value1");
+        // print the cache for debugging
+        println!("Cache after rehydration: {:?}", cache);
     }
 }
