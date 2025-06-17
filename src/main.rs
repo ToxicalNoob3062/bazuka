@@ -1,38 +1,44 @@
-use std::{sync::Arc, time::Duration};
-
-use bazuka::{
-    SkmvCache,
-    SkmvConfig,
-};
-
+use bazuka::{SkmvCache, SkmvConfig};
 
 #[tokio::main]
 async fn main() {
-      let cache = SkmvCache::<String, String>::new(
-            SkmvConfig {
-                maximum_capacity: 100,
-                maximum_values_per_key: 10,
-                idle_timeout: Some(Duration::from_secs(60)),
-                time_to_live: Some(Duration::from_secs(60)),
-            },
-        );
+    let cache = SkmvCache::<String, String>::new(SkmvConfig {
+        maximum_capacity: 100,
+        maximum_values_per_key: 10,
+        idle_timeout: Some(30), 
+        time_to_live: Some(30), 
+    });
 
-        println!("Running multiple operations test...\n");
+    // do insert 100 values from async tasks
+    let mut handles = vec![];
+    for i in 0..100 {
+        let cache_clone = cache.clone();
+        let handle = tokio::spawn(async move {
+            cache_clone.insert(format!("key{}", i), format!("value{}", i), i + 5).await;
+        });
+        handles.push(handle);
+    }
+    for handle in handles {
+        handle.await.unwrap();
+    }
 
-        cache.insert("key1".to_string(), "value1".to_string(), 5).await;
-        cache.insert("key1".to_string(), "value2".to_string(), 5).await;
-        let values = cache.get("key1".to_string()).await;
-        // print all values
-        println!("Values for key1: {:?}", values);
-        assert_eq!(values.len(), 2);
-        assert!(values.contains(&Arc::new("value1".to_string())));
-        assert!(values.contains(&Arc::new("value2".to_string())));
+    // do get 100 values from async tasks
+    let mut handles = vec![];
+    for i in 0..100 {
+        let cache_clone = cache.clone();
+        let handle = tokio::spawn(async move {
+            println!("Got: {:?}", cache_clone.get(&format!("key{}", i)).await);
+        });
+        handles.push(handle);
+    }
+    for handle in handles {
+        handle.await.unwrap();
+    }
 
-        cache.remove("key1".to_string(), "value1".to_string()).await;
-        let values = cache.get("key1".to_string()).await;
-        assert_eq!(values.len(), 1);
-        assert!(values.contains(&Arc::new("value2".to_string())));
+    // add 2 more value to key 5
+    cache.insert("key5".to_string(), "value105".to_string(), 10).await;
+    cache.insert("key5".to_string(), "value106".to_string(), 10).await;
 
-         // print the cache
-        println!("Current Cache: {:?}", cache);
+    // update the ttl for val106
+    cache.insert("key5".to_string(), "value106".to_string(), 20).await;
 }
