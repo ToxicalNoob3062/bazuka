@@ -1,6 +1,6 @@
 # Bazuka
 
-Bazuka is a high-performance, asynchronous, multi-value cache for Rust, built on top of [moka](https://github.com/moka-rs/moka) and [dashmap](https://github.com/xacrimon/dashmap). It allows you to associate multiple values with a single key, each with its own expiry, and is designed for concurrent use in async environments (e.g., with Tokio).
+Bazuka is a high-performance, asynchronous, multi-value cache for Rust for tokio runtime. It allows you to associate multiple values with a single key, each with its own expiry, and is designed for concurrent use in async environments (e.g., with Tokio).
 
 ## Features
 
@@ -10,16 +10,6 @@ Bazuka is a high-performance, asynchronous, multi-value cache for Rust, built on
 - **Customizable expiry:** Supports idle and absolute expiry for keys.
 - **Eviction listeners:** Custom logic on value/key eviction.
 - **Efficient memory usage:** Backed by moka and dashmap for speed and safety.
-
-## Installation
-
-Add to your `Cargo.toml`:
-
-```toml
-[dependencies]
-bazuka = "0.1"
-tokio = { version = "1", features = ["full"] }
-```
 
 ## Usage
 
