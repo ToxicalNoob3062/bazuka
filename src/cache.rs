@@ -18,8 +18,7 @@ pub struct SkmvConfig {
     pub time_to_live: Option<Duration>,
 }
 
-
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct SkmvCache<K, V>
 where
     K: Hash + Eq + Send + Sync + 'static,
@@ -115,14 +114,26 @@ where
                 cache.insert(key_tuple.clone(), ttl).await;
                 tracker.insert(key.clone(), Arc::new(set)).await;
             }
-        }      
+        }
     }
 
     /// Returns a vector of cloned values for the given key.
     pub async fn get(&self, key: K) -> Vec<Arc<V>> {
         let tracker = self.vtable.0.get().unwrap();
-        let set = tracker.get(&key).await.unwrap_or_default();
-        set.iter().map(|item| item.key().1.clone()).collect()
+        let cache = self.vtable.1.get().unwrap();
+        let keys_to_check: Vec<Arc<(Arc<K>, Arc<V>)>> = {
+            let set = tracker.get(&key).await.unwrap_or_default();
+            set.iter()
+                .map(|item_ref| item_ref.key().clone()) // Clone the Arc<(Arc<K>, Arc<V>)>
+                .collect()
+        };
+        let mut values = Vec::new();
+        for cache_key_tuple in keys_to_check {
+            if cache.get(&cache_key_tuple).await.is_some() {
+                values.push(cache_key_tuple.1.clone());
+            }
+        }
+        values
     }
 
     /// Removes a value against a key.
@@ -139,9 +150,13 @@ where
         let cache = self.vtable.1.get().unwrap();
         cache.invalidate(&key_tuple).await;
     }
+
+    //force eviction
+    async fn force_eviction(&self) {
+        let cache = self.vtable.1.get().unwrap();
+        cache.run_pending_tasks().await;
+    }
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -152,28 +167,26 @@ mod tests {
     #[test]
     fn test_skmv_creation() {
         // test if you can create a new SkmvCache without a panic
-        SkmvCache::<String, String>::new(
-            SkmvConfig {
-                maximum_capacity: 100,
-                maximum_values_per_key: 10,
-                idle_timeout: Some(Duration::from_secs(60)),
-                time_to_live: Some(Duration::from_secs(60)),
-            },
-        );
+        SkmvCache::<String, String>::new(SkmvConfig {
+            maximum_capacity: 100,
+            maximum_values_per_key: 10,
+            idle_timeout: Some(Duration::from_secs(60)),
+            time_to_live: Some(Duration::from_secs(60)),
+        });
     }
 
     #[tokio::test]
     async fn test_skmv_insert_and_get() {
-        let cache = SkmvCache::<String, String>::new(
-            SkmvConfig {
-                maximum_capacity: 100,
-                maximum_values_per_key: 10,
-                idle_timeout: Some(Duration::from_secs(60)),
-                time_to_live: Some(Duration::from_secs(60)),
-            },
-        );
+        let cache = SkmvCache::<String, String>::new(SkmvConfig {
+            maximum_capacity: 100,
+            maximum_values_per_key: 10,
+            idle_timeout: Some(Duration::from_secs(60)),
+            time_to_live: Some(Duration::from_secs(60)),
+        });
 
-        cache.insert("key1".to_string(), "value1".to_string(), 5).await;
+        cache
+            .insert("key1".to_string(), "value1".to_string(), 5)
+            .await;
         let values = cache.get("key1".to_string()).await;
         assert_eq!(values.len(), 1);
         assert_eq!(values[0].as_str(), "value1");
@@ -181,16 +194,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_skmv_insert_and_remove() {
-        let cache = SkmvCache::<String, String>::new(
-            SkmvConfig {
-                maximum_capacity: 100,
-                maximum_values_per_key: 10,
-                idle_timeout: Some(Duration::from_secs(60)),
-                time_to_live: Some(Duration::from_secs(60)),
-            },
-        );
+        let cache = SkmvCache::<String, String>::new(SkmvConfig {
+            maximum_capacity: 100,
+            maximum_values_per_key: 10,
+            idle_timeout: Some(Duration::from_secs(60)),
+            time_to_live: Some(Duration::from_secs(60)),
+        });
 
-        cache.insert("key1".to_string(), "value1".to_string(), 5).await;
+        cache
+            .insert("key1".to_string(), "value1".to_string(), 5)
+            .await;
         cache.remove("key1".to_string(), "value1".to_string()).await;
         let values = cache.get("key1".to_string()).await;
         assert!(values.is_empty());
@@ -199,19 +212,21 @@ mod tests {
     // test muitple insertions, retievals and removals
     #[tokio::test]
     async fn test_skmv_multiple_operations() {
-        let cache = SkmvCache::<String, String>::new(
-            SkmvConfig {
-                maximum_capacity: 100,
-                maximum_values_per_key: 10,
-                idle_timeout: Some(Duration::from_secs(60)),
-                time_to_live: Some(Duration::from_secs(60)),
-            },
-        );
+        let cache = SkmvCache::<String, String>::new(SkmvConfig {
+            maximum_capacity: 100,
+            maximum_values_per_key: 10,
+            idle_timeout: Some(Duration::from_secs(60)),
+            time_to_live: Some(Duration::from_secs(60)),
+        });
 
         println!("Running multiple operations test...\n");
 
-        cache.insert("key1".to_string(), "value1".to_string(), 5).await;
-        cache.insert("key1".to_string(), "value2".to_string(), 5).await;
+        cache
+            .insert("key1".to_string(), "value1".to_string(), 5)
+            .await;
+        cache
+            .insert("key1".to_string(), "value2".to_string(), 5)
+            .await;
         let values = cache.get("key1".to_string()).await;
         assert_eq!(values.len(), 2);
         assert!(values.contains(&Arc::new("value1".to_string())));
@@ -227,14 +242,12 @@ mod tests {
     async fn test_skmv_concurrency() {
         // launch 100 task that insert k_i for v_i for 10 sec;
         // wait for 5 sec and then access a random key between 0 and 99
-        let cache = SkmvCache::<String, String>::new(
-            SkmvConfig {
-                maximum_capacity: 100,
-                maximum_values_per_key: 10,
-                idle_timeout: Some(Duration::from_secs(60)),
-                time_to_live: Some(Duration::from_secs(60)),
-            },
-        );
+        let cache = SkmvCache::<String, String>::new(SkmvConfig {
+            maximum_capacity: 100,
+            maximum_values_per_key: 10,
+            idle_timeout: Some(Duration::from_secs(60)),
+            time_to_live: Some(Duration::from_secs(60)),
+        });
         let mut handles = vec![];
         for i in 0..100 {
             let cache_clone = cache.clone();
@@ -251,7 +264,7 @@ mod tests {
         println!("Insertion complete, now accessing random keys...\n");
         // assert the cache size is 100
         assert_eq!(cache.vtable.1.get().unwrap().iter().count(), 100);
-        
+
         // access random keys from different tasks
         let mut handles = vec![];
         let mut rng = rand::rng();
@@ -274,22 +287,24 @@ mod tests {
     #[tokio::test]
     async fn test_skmv_rehydration() {
         // test if you can rehydrate the cache with the same config
-        let cache = SkmvCache::<String, String>::new(
-            SkmvConfig {
-                maximum_capacity: 100,
-                maximum_values_per_key: 10,
-                idle_timeout: Some(Duration::from_secs(60)),
-                time_to_live: Some(Duration::from_secs(60)),
-            },
-        );
+        let cache = SkmvCache::<String, String>::new(SkmvConfig {
+            maximum_capacity: 100,
+            maximum_values_per_key: 10,
+            idle_timeout: Some(Duration::from_secs(60)),
+            time_to_live: Some(Duration::from_secs(60)),
+        });
 
-        cache.insert("key1".to_string(), "value1".to_string(), 3).await;
+        cache
+            .insert("key1".to_string(), "value1".to_string(), 3)
+            .await;
         let values = cache.get("key1".to_string()).await;
         assert_eq!(values.len(), 1);
         assert_eq!(values[0].as_str(), "value1");
 
         // rehydrate the cache by passing a different ttl with same key and value
-        cache.insert("key1".to_string(), "value1".to_string(), 8).await;
+        cache
+            .insert("key1".to_string(), "value1".to_string(), 8)
+            .await;
 
         // wait for 4 seconds to let the value expire
         tokio::time::sleep(Duration::from_secs(4)).await;
@@ -300,5 +315,33 @@ mod tests {
         assert_eq!(values[0].as_str(), "value1");
         // print the cache for debugging
         println!("Cache after rehydration: {:?}", cache);
+    }
+
+    #[tokio::test]
+    async fn test_skmv_eviction() {
+        // test if you can evict the cache with the same config
+        let cache = SkmvCache::<String, String>::new(SkmvConfig {
+            maximum_capacity: 3,
+            maximum_values_per_key: 10,
+            idle_timeout: Some(Duration::from_secs(60)),
+            time_to_live: Some(Duration::from_secs(60)),
+        });
+
+        cache
+            .insert("key1".to_string(), "value1".to_string(), 2)
+            .await;
+
+        //wait for 3 seconds to let the value expire
+        tokio::time::sleep(Duration::from_secs(5)).await;
+
+        //force eviction to happen
+        //cache.force_eviction().await;
+
+        // get the value for implicit eviction
+        let values = cache.get("key1".to_string()).await;
+        println!("Values after implicit eviction: {:?}", values);
+
+        // assert that the value is empty as it should have been evicted
+        assert!(values.is_empty(), "Value should be evicted after ttl");
     }
 }
