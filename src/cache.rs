@@ -200,6 +200,15 @@ where
         cache.invalidate(&key_tuple).await;
     }
 
+    pub async fn iter(&self) -> impl Iterator<Item = (Arc<K>, Arc<V>)> + '_ {
+        let cache = self.vtable.1.get().unwrap();
+        cache.run_pending_tasks().await; 
+        cache.iter().map(|(tuple_arc, _)| {
+            let (k, v) = &**tuple_arc;
+            (k.clone(), v.clone())
+        })
+    }
+
     //force eviction
     #[allow(dead_code)]
     async fn force_eviction(&self) {
@@ -240,6 +249,28 @@ mod tests {
         let values = cache.get(&"key1".to_string()).await;
         assert_eq!(values.len(), 1);
         assert_eq!(values[0].as_str(), "value1");
+    }
+
+    #[tokio::test]
+    async fn test_skmv_iter() {
+        let cache = SkmvCache::<String, String>::new(SkmvConfig {
+            maximum_capacity: 100,
+            maximum_values_per_key: 10,
+            idle_timeout: None,
+            time_to_live: None,
+        });
+
+        cache
+            .insert("key1".to_string(), "value1".to_string(), 5)
+            .await;
+        cache
+            .insert("key2".to_string(), "value2".to_string(), 5)
+            .await;
+
+        let mut iter = cache.iter().await;
+        assert_eq!(iter.next(), Some((Arc::new("key1".to_string()), Arc::new("value1".to_string()))));
+        assert_eq!(iter.next(), Some((Arc::new("key2".to_string()), Arc::new("value2".to_string()))));
+        assert_eq!(iter.next(), None);
     }
 
     #[tokio::test]
