@@ -200,6 +200,16 @@ where
         cache.invalidate(&key_tuple).await;
     }
 
+    /// Returns an iterator over all key-value pairs in the cache.
+    /// /// The iterator yields tuples of `(Arc<K>, Arc<V>)`, where `K` is the key type and `V` is the value type.
+    /// /// The iterator will not return any values that have been evicted or expired.
+    /// # Example
+    /// ```ignore
+    /// let mut iter = cache.iter().await;
+    /// while let Some((key, value)) = iter.next() {
+    ///    println!("Key: {:?}, Value: {:?}", key, value);
+    /// }
+    ///  ```
     pub async fn iter(&self) -> impl Iterator<Item = (Arc<K>, Arc<V>)> + '_ {
         let cache = self.vtable.1.get().unwrap();
         cache.run_pending_tasks().await; 

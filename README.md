@@ -67,6 +67,12 @@ cache.insert("k1".to_string(), "v2".to_string(), 10).await; // expires in 10s
 
 // update ttl
 cache.insert("k1".to_string(), "v1".to_string(), 8).await; // updated ttl of the specific value to 8 sec
+
+// iter over the cache
+let mut iter = cache.iter().await;
+while let Some((key, value)) = iter.next() {
+    println!("Key: {:?}, Value: {:?}", key, value);
+}
 ```
 
 ## Testing
