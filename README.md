@@ -70,8 +70,8 @@ cache.insert("k1".to_string(), "v1".to_string(), 8).await; // updated ttl of the
 
 // iter over the cache
 let mut iter = cache.iter().await;
-while let Some((key, value)) = iter.next() {
-    println!("Key: {:?}, Value: {:?}", key, value);
+while let Some((key, value, ttl)) = iter.next() {
+    println!("Key: {:?}, Value: {:?}, TTL: {:?}", key, value, ttl);
 }
 ```
 
